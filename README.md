@@ -415,6 +415,57 @@ Then visit <http://localhost:3000>.
 
 ---
 
+## Evaluation & observability
+
+The repo ships with a **42-case golden dataset**, a **local accuracy
+runner**, and an **Opik (Comet) integration** that turns the same
+dataset into a managed Dataset + Experiment in the cloud.
+
+### Local runner (no Opik account required)
+
+```bash
+cd backend && source .venv/bin/activate
+python -m evals.run_eval                 # full run, prints metrics + JSON report
+python -m evals.run_eval --ids TC033,TC037
+python -m evals.run_eval --filter prompt_injection
+```
+
+Detailed per-case results are written to `backend/evals/eval_report.json`.
+
+### Opik Experiments
+
+If `OPIK_API_KEY` and `OPIK_WORKSPACE` are set in `backend/.env`,
+every `/agent/chat` call is already traced. The eval suite goes one
+step further:
+
+```bash
+# 1) Push every golden case as a versioned Dataset in Opik.
+python -m evals.opik_suite upload
+
+# 2) Run the agent as an Experiment over that Dataset.
+python -m evals.opik_suite run               # all 42 cases
+python -m evals.opik_suite run --ids TC033,TC037
+python -m evals.opik_suite run --filter full_capacity --limit 5
+```
+
+What you get in the Opik UI:
+
+| Tab | What you see |
+|---|---|
+| **Datasets** → `conference-agent-portal-golden` | 42 items with `input`, `expected_output`, and `category`. Re-running `upload` versions in place. |
+| **Experiments** → `agent-eval-*` | Per-case pass/fail across **8 metrics** (`tool_selection`, `tool_order`, `parameter`, `clarification`, `no_tool`, `safety`, `answer_text`, `hallucination_safe`), aggregated accuracy, and a link to the underlying trace tree. |
+| **Project** → `conference-agent-portal` | Every Gemini call, every tool call, full attendee / status / policy-violation metadata. |
+
+The Opik task function reuses the same setup/teardown as `run_eval.py`
+(fresh attendee per case, throwaway capacity-fillers, schedule-conflict
+pre-registrations), so the two flows score identically.
+
+> **Tip:** the backend store is in-memory; `opik_suite run` defaults to
+> `--threads 1` to keep capacity preconditions deterministic. Bump
+> only if you've moved to a per-request store.
+
+---
+
 ## Project structure
 
 ```
@@ -434,7 +485,12 @@ backend/
 │   ├── orchestrator.py     run_chat() loop with pre-LLM yes/no short-circuit
 │   ├── conversation.py     Per-attendee pending_action store (TTL 10 min)
 │   ├── traces.py           In-memory ring-buffer of conversation traces
+│   ├── opik_io.py          Optional Opik (Comet) observability hooks
 │   └── schemas.py          Pydantic models for chat/trace/violations
+├── evals/                  Offline evaluation & observability
+│   ├── golden_dataset.json 42 hand-curated test cases across 10 categories
+│   ├── run_eval.py         Local CLI runner — metrics + JSON report
+│   └── opik_suite.py       Upload dataset / run Experiment in Opik
 ├── requirements.txt
 ├── .env.example            Copy to .env and fill in RESEND_API_KEY/GEMINI_API_KEY
 └── .venv/                  (created by you, ignored)

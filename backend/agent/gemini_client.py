@@ -18,6 +18,9 @@ class GeminiNotConfiguredError(RuntimeError):
     """Raised when GEMINI_API_KEY is missing."""
 
 
+_cached_genai_client: genai.Client | None = None
+
+
 def get_client() -> genai.Client:
     api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
     if not api_key:
@@ -25,7 +28,23 @@ def get_client() -> genai.Client:
             "GEMINI_API_KEY is not set. Add it to backend/.env to enable "
             "the AI assistant. Get a key at https://aistudio.google.com/apikey."
         )
-    return genai.Client(api_key=api_key)
+    global _cached_genai_client
+    if _cached_genai_client is not None:
+        return _cached_genai_client
+
+    client = genai.Client(api_key=api_key)
+    try:
+        from agent import opik_io
+
+        if opik_io.is_enabled():
+            opik_io.ensure_configured()
+            from opik.integrations.genai.opik_tracker import track_genai
+
+            client = track_genai(client, project_name=opik_io.project_name())
+    except Exception:  # noqa: BLE001 — never break chat if Opik fails
+        pass
+    _cached_genai_client = client
+    return client
 
 
 # ─────────────── Function declarations (LLM-visible schemas) ───────────────

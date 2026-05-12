@@ -12,3 +12,5 @@ out/
 .DS_Store
 *.log
 *.tsbuildinfo
+
+backend/evals/eval_report.json

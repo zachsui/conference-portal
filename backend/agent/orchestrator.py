@@ -82,6 +82,26 @@ _PROPOSAL_HINTS = (
 
 
 # ─────────────── Helpers ───────────────
+def _normalize_id_args(args: dict) -> dict:
+    """Canonicalize ID-shaped args before validator + tool dispatch.
+
+    Sessions are stored as 'S###' (uppercase) and registrations as
+    'REG-XXXX' (uppercase). LLMs occasionally echo them in lowercase
+    or with surrounding whitespace; normalize so downstream lookups
+    and policy state comparisons all use the canonical form.
+    """
+    if not isinstance(args, dict):
+        return args
+    normalized = dict(args)
+    sid = normalized.get("session_id")
+    if isinstance(sid, str):
+        normalized["session_id"] = sid.strip().upper()
+    rid = normalized.get("registration_id")
+    if isinstance(rid, str):
+        normalized["registration_id"] = rid.strip().upper()
+    return normalized
+
+
 def _to_jsonable(value: Any) -> Any:
     """Coerce google-genai/proto values into plain JSON-friendly Python."""
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -171,6 +191,9 @@ def _save_and_return(
         if response.pending_action_after
         else None,
     )
+    from agent import opik_io
+
+    opik_io.annotate_chat_trace(response, attendee_id)
     return response
 
 
@@ -507,7 +530,7 @@ def _try_short_circuit(
 
 
 # ─────────────── Main entry ───────────────
-def run_chat(attendee_id: str, message: str) -> ChatResponse:
+def _run_chat_impl(attendee_id: str, message: str) -> ChatResponse:
     trace_id = trace_store.new_trace_id()
     logger.info("[%s] user=%s msg=%r", trace_id, attendee_id, message[:200])
 
@@ -604,6 +627,7 @@ def run_chat(attendee_id: str, message: str) -> ChatResponse:
                 if not isinstance(args, dict):
                     args = {}
                 args = bind_attendee_id(tool_name, args, attendee_id)
+                args = _normalize_id_args(args)
 
                 logger.info(
                     "[%s] step=%d tool=%s args=%s",
@@ -781,3 +805,12 @@ def run_chat(attendee_id: str, message: str) -> ChatResponse:
         confirmation_detected=False,
     )
     return _save_and_return(chat_response, attendee_id)
+
+
+def run_chat(attendee_id: str, message: str) -> ChatResponse:
+    """Public entry — wraps `_run_chat_impl` with optional Opik tracing."""
+    from agent import opik_io
+
+    if not opik_io.is_enabled():
+        return _run_chat_impl(attendee_id, message)
+    return opik_io.run_chat_tracked(_run_chat_impl, attendee_id, message)

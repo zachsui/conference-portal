@@ -45,6 +45,18 @@ def _normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _normalize_session_id(session_id: Optional[str]) -> str:
+    if not session_id:
+        return ""
+    return session_id.strip().upper()
+
+
+def _normalize_registration_id(registration_id: Optional[str]) -> str:
+    if not registration_id:
+        return ""
+    return registration_id.strip().upper()
+
+
 def _is_valid_email(email: str) -> bool:
     if "@" not in email:
         return False
@@ -202,7 +214,8 @@ class Store:
         return results
 
     def get_session(self, session_id: str) -> Session:
-        session = self._sessions.get(session_id)
+        normalized = _normalize_session_id(session_id)
+        session = self._sessions.get(normalized)
         if session is None:
             raise NotFoundError(f"Session '{session_id}' not found")
         return session
@@ -235,6 +248,7 @@ class Store:
                     "Please sign in or register an account first."
                 )
             session = self.get_session(session_id)
+            session_id = session.session_id
 
             if session.registered_count >= session.capacity:
                 raise FullSessionError(
@@ -281,7 +295,8 @@ class Store:
 
     def cancel_registration(self, registration_id: str) -> Registration:
         with self._lock:
-            reg = self._registrations.get(registration_id)
+            normalized = _normalize_registration_id(registration_id)
+            reg = self._registrations.get(normalized)
             if reg is None:
                 raise NotFoundError(
                     f"Registration '{registration_id}' not found"
@@ -294,7 +309,7 @@ class Store:
                     }
                 )
                 self._sessions[reg.session_id] = updated
-            del self._registrations[registration_id]
+            del self._registrations[normalized]
             return reg
 
     def get_agenda(self, attendee_id: str) -> List[AgendaItem]:

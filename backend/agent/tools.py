@@ -17,6 +17,7 @@ import logging
 import threading
 from typing import Any, Callable, Dict, Optional
 
+from agent.opik_io import tool_track
 from app.email import email_service
 from app.models import Session
 from app.store import (
@@ -63,6 +64,7 @@ def _send_async(fn: Callable, *args: Any) -> None:
 
 
 # ─────────────── Tools ───────────────
+@tool_track("search_sessions")
 def search_sessions(
     *,
     topic: Optional[str] = None,
@@ -89,6 +91,7 @@ def search_sessions(
     }
 
 
+@tool_track("get_session_detail")
 def get_session_detail(*, session_id: str) -> dict:
     try:
         s = store.get_session(session_id)
@@ -97,6 +100,7 @@ def get_session_detail(*, session_id: str) -> dict:
     return {"ok": True, "session": _session_summary(s)}
 
 
+@tool_track("check_capacity")
 def check_capacity(*, session_id: str) -> dict:
     try:
         info = store.get_capacity(session_id)
@@ -105,6 +109,7 @@ def check_capacity(*, session_id: str) -> dict:
     return {"ok": True, **info.model_dump()}
 
 
+@tool_track("register_session")
 def register_session(*, attendee_id: str, session_id: str) -> dict:
     try:
         registration = store.create_registration(attendee_id, session_id)
@@ -134,6 +139,7 @@ def register_session(*, attendee_id: str, session_id: str) -> dict:
     return {"ok": True, "registration": registration.model_dump()}
 
 
+@tool_track("cancel_registration")
 def cancel_registration(*, registration_id: str) -> dict:
     try:
         cancelled = store.cancel_registration(registration_id)
@@ -155,6 +161,7 @@ def cancel_registration(*, registration_id: str) -> dict:
     return {"ok": True, "cancelled": cancelled.model_dump()}
 
 
+@tool_track("get_agenda")
 def get_agenda(*, attendee_id: str) -> dict:
     items = store.get_agenda(attendee_id)
     return {
